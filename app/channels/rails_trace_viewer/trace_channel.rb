@@ -1,5 +1,5 @@
 module RailsTraceViewer
-  class TraceChannel < ApplicationCable::Channel
+  class TraceChannel < ActionCable::Channel::Base
     def subscribed
       stream_from "rails_trace_viewer"
     end

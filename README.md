@@ -197,6 +197,11 @@ The viewer uses specific colors to represent different parts of the call stack:
 
 ## 🛠️ Troubleshooting
 
+### **"My app hangs or loads very slowly when the viewer is open."**
+* **Check your Web Server:** Ensure you are using a multi-threaded server like **Puma**.
+* **Why?** This gem uses ActionCable (WebSockets). Single-threaded servers (like **WEBrick**) cannot handle the persistent WebSocket connection and regular HTTP requests at the same time, causing the app to block.
+* **Fix:** Add `gem 'puma'` to your Gemfile and remove `gem 'webrick'`.
+
 ### **"I see the Enqueue node, but the trace stops there."**
 - Ensure **Sidekiq is running**.
 - Ensure `config/cable.yml` uses **Redis**, not the async adapter.

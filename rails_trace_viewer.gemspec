@@ -22,6 +22,7 @@ Gem::Specification.new do |spec|
   spec.metadata["homepage_uri"] = spec.homepage
   spec.metadata["source_code_uri"] = "https://github.com/Aditya-JOSH/rails_trace_viewer"
   spec.metadata["changelog_uri"] = "https://github.com/Aditya-JOSH/rails_trace_viewer/blob/main/CHANGELOG.md"
+  spec.metadata["documentation_uri"] = "https://github.com/Aditya-JOSH/rails_trace_viewer/blob/main/README.md"
 
   spec.post_install_message = "Thanks for installing Rails Trace Viewer! Don't forget to mount the engine in your config/routes.rb: mount RailsTraceViewer::Engine => '/rails_trace_viewer'"
   # Specify which files should be added to the gem when it is released.

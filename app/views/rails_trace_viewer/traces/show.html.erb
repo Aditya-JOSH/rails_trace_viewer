@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Rails Trace Viewer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@rails/actioncable@7.1.3/app/assets/javascripts/actioncable.js"></script>
+  
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    body { font-family: 'Inter', sans-serif; background: #f8fafc; overflow: hidden; }
+    
+    /* Graph Container - Infinite Canvas Style */
+    .trace-container { 
+      height: calc(100vh - 64px); 
+      width: 100%; 
+      overflow: hidden; 
+      cursor: grab; 
+      background: #f8fafc;
+    }
+    .trace-container:active { cursor: grabbing; }
+
+    /* Nodes */
+    .node rect { rx: 6; ry: 6; stroke-width: 1px; transition: all 0.2s; filter: drop-shadow(0 2px 4px rgb(0 0 0 / 0.05)); }
+    .node:hover rect { stroke-width: 2px; stroke: #6366f1; cursor: pointer; transform: translateY(-1px); }
+    .node text { font-family: 'Inter', sans-serif; pointer-events: none; }
+    .node .label-title { font-weight: 600; font-size: 12px; } 
+    .node .label-type { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.6; }
+
+    .link { fill: none; stroke: #cbd5e1; stroke-width: 1.5px; marker-end: url(#arrow); transition: stroke 0.2s; }
+
+    /* Node Colors */
+    .node-type-request rect, .node-type-controller_action rect { fill: #eff6ff; stroke: #bfdbfe; }
+    .node-type-request text { fill: #1e40af; }
+    
+    .node-type-method rect { fill: #ffffff; stroke: #cbd5e1; }
+    .node-type-method text { fill: #334155; }
+    
+    .node-type-sql rect { fill: #fffbeb; stroke: #fde68a; }
+    .node-type-sql text { fill: #92400e; }
+    
+    .node-type-job_enqueue rect { fill: #faf5ff; stroke: #d8b4fe; }
+    .node-type-job_enqueue text { fill: #6b21a8; }
+    
+    .node-type-job_perform rect { fill: #fdf2f8; stroke: #f9a8d4; }
+    .node-type-job_perform text { fill: #9d174d; }
+    
+    .node-type-view rect { fill: #f0fdf4; stroke: #86efac; }
+    .node-type-view text { fill: #166534; }
+    
+    .node-type-route rect { fill: #ecfeff; stroke: #a5f3fc; }
+    .node-type-route text { fill: #0e7490; }
+
+    /* Drawer */
+    .drawer {
+      position: fixed; top: 64px; right: -500px; width: 450px; height: calc(100vh - 64px);
+      background: white; border-left: 1px solid #e2e8f0; box-shadow: -4px 0 25px rgba(0,0,0,0.05);
+      transition: right 0.3s cubic-bezier(0.16, 1, 0.3, 1); z-index: 50; display: flex; flex-direction: column;
+    }
+    .drawer.open { right: 0; }
+    
+    .code-block {
+      background: #f8fafc; padding: 10px; border-radius: 6px; font-family: 'JetBrains Mono', monospace;
+      font-size: 11px; color: #334155; overflow-x: auto; white-space: pre-wrap; border: 1px solid #e2e8f0; margin-top: 4px;
+    }
+    .kv-row { margin-bottom: 12px; }
+    .kv-label { font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; margin-bottom: 2px; }
+    .kv-value { font-size: 13px; color: #1e293b; word-break: break-all; line-height: 1.4; }
+
+    /* Help/Learn Styles */
+    .help-section { margin-bottom: 24px; }
+    .help-title { font-weight: 600; color: #1e293b; display: flex; items-center; gap: 8px; margin-bottom: 8px; }
+    .help-text { font-size: 13px; color: #475569; line-height: 1.5; }
+    .help-list { list-style: disc; padding-left: 20px; margin-top: 4px; }
+    .help-list li { margin-bottom: 4px; }
+    .kbd { background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px; padding: 2px 4px; font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+  </style>
+</head>
+
+<body>
+
+<div class="h-16 bg-white border-b border-slate-200 flex justify-between items-center px-6 shadow-sm z-50 relative">
+  <div class="flex items-center gap-3">
+    <div class="bg-indigo-600 text-white p-1.5 rounded-lg">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+    </div>
+    <h1 class="text-lg font-bold text-slate-800">Rails Trace Viewer</h1>
+  </div>
+  <div class="flex gap-3">
+    <button id="center-btn" class="px-3 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded-md hover:bg-slate-50 flex items-center gap-2 transition-all active:scale-95">
+      <span>🎯</span> Latest Trace
+    </button>
+    <button id="clear-btn" class="px-3 py-2 text-sm font-medium text-red-600 bg-white border border-slate-300 rounded-md hover:bg-red-50 flex items-center gap-2 transition-all active:scale-95">
+      <span>🗑</span> Clear
+    </button>
+    <button id="learn-btn" class="px-3 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-md hover:bg-indigo-100 flex items-center gap-2 transition-all active:scale-95">
+      <span>📖</span> Learn
+    </button>
+  </div>
+</div>
+
+<div class="flex h-full">
+  <div id="trace-visualization" class="trace-container"></div>
+  <div id="detail-drawer" class="drawer">
+    <div class="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+      <h2 class="font-bold text-slate-800 text-lg" id="drawer-title">Details</h2>
+      <button id="close-drawer" class="text-slate-400 hover:text-slate-700">✕</button>
+    </div>
+    <div class="p-6 overflow-y-auto flex-1" id="drawer-content"></div>
+  </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const container = document.getElementById("trace-visualization");
+  const drawer = document.getElementById("detail-drawer");
+  let graphs = {}; 
+  let nodeBuffer = {};
+  let verticalOffset = 60;
+  const DAG_SPACING = 200;
+  
+  // Node Dimensions
+  const NODE_WIDTH = 250; 
+  const NODE_HEIGHT = 46;
+
+  const svg = d3.select("#trace-visualization").append("svg").attr("width", "100%").attr("height", "100%");
+  const g = svg.append("g");
+  
+  svg.append("defs").append("marker")
+      .attr("id", "arrow").attr("viewBox", "0 -5 10 10").attr("refX", 9).attr("refY", 0)
+      .attr("markerWidth", 5).attr("markerHeight", 5).attr("orient", "auto")
+      .append("path").attr("d", "M0,-5L10,0L0,5").attr("fill", "#94a3b8");
+
+  const zoom = d3.zoom().scaleExtent([0.05, 3]).on("zoom", (e) => g.attr("transform", e.transform));
+  svg.call(zoom);
+
+  // --- ActionCable Management ---
+  let cable = null;
+  let subscription = null;
+
+  function setupSubscription() {
+    if (cable) cable.disconnect();
+    cable = ActionCable.createConsumer();
+    
+    subscription = cable.subscriptions.create({ channel: "RailsTraceViewer::TraceChannel" }, {
+      connected() { console.log("✅ TraceViewer: Connected"); },
+      disconnected() { console.log("❌ TraceViewer: Disconnected"); },
+      received(data) {
+        if (!data || !data.node) return;
+        if ((data.node.name || "").includes("RailsTraceViewer")) return;
+        addNodeToGraph(data.trace_id, data.node);
+        
+        if (this.redrawTimer) clearTimeout(this.redrawTimer);
+        this.redrawTimer = setTimeout(redrawAllGraphs, 100);
+      }
+    });
+  }
+
+  setupSubscription();
+
+  // --- Buffer Logic ---
+  setInterval(() => {
+    const now = Date.now();
+    let changed = false;
+    Object.keys(nodeBuffer).forEach(pid => {
+      const list = nodeBuffer[pid];
+      const kept = [];
+      list.forEach(item => {
+        if (now - item.receivedAt > 3000) {
+          addNodeToGraph(item.traceId, { ...item.node, parent_id: null });
+          changed = true;
+        } else kept.push(item);
+      });
+      if (kept.length === 0) delete nodeBuffer[pid];
+      else nodeBuffer[pid] = kept;
+    });
+    if (changed) redrawAllGraphs();
+  }, 1000);
+
+  function addNodeToGraph(trace_id, node) {
+    if (!graphs[trace_id]) graphs[trace_id] = { nodes: {}, edges: [], height: 0 };
+    const G = graphs[trace_id];
+    if (G.nodes[node.id]) return;
+
+    if (node.parent_id && !G.nodes[node.parent_id]) {
+      nodeBuffer[node.parent_id] ||= [];
+      nodeBuffer[node.parent_id].push({ node, traceId: trace_id, receivedAt: Date.now() });
+      return;
+    }
+
+    G.nodes[node.id] = { ...node, label: node.name };
+    if (node.parent_id && !G.edges.some(e => e.source === node.parent_id && e.target === node.id)) {
+      G.edges.push({ source: node.parent_id, target: node.id });
+    }
+
+    if (nodeBuffer[node.id]) {
+      const children = nodeBuffer[node.id];
+      delete nodeBuffer[node.id];
+      children.forEach(c => addNodeToGraph(trace_id, c.node));
+    }
+  }
+
+  // --- Rendering ---
+  function redrawAllGraphs() {
+    g.selectAll("*").remove();
+    verticalOffset = 60;
+    
+    Object.keys(graphs).forEach(tid => {
+      renderSingleDAG(graphs[tid], verticalOffset);
+      verticalOffset += graphs[tid].height + DAG_SPACING;
+    });
+  }
+
+  function renderSingleDAG(G, yOffset) {
+    const dag = new dagre.graphlib.Graph();
+    dag.setGraph({ rankdir: "LR", nodesep: 25, ranksep: 60 });
+    dag.setDefaultEdgeLabel(() => ({}));
+
+    Object.values(G.nodes).forEach(n => {
+      let lbl = n.name || "Unknown";
+      if (lbl.length > 38) lbl = lbl.substring(0, 35) + "...";
+      dag.setNode(n.id, { label: lbl, width: NODE_WIDTH, height: NODE_HEIGHT, type: n.type, fullData: n });
+    });
+
+    G.edges.forEach(e => dag.setEdge(e.source, e.target));
+    dagre.layout(dag);
+
+    if (dag.graph().height) G.height = dag.graph().height;
+    
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+
+    Object.values(G.nodes).forEach(n => {
+      const nodeInfo = dag.node(n.id);
+      const nx1 = nodeInfo.x - (nodeInfo.width / 2);
+      const nx2 = nodeInfo.x + (nodeInfo.width / 2);
+      const ny1 = nodeInfo.y - (nodeInfo.height / 2);
+      const ny2 = nodeInfo.y + (nodeInfo.height / 2);
+
+      if (nx1 < minX) minX = nx1;
+      if (nx2 > maxX) maxX = nx2;
+      if (ny1 < minY) minY = ny1;
+      if (ny2 > maxY) maxY = ny2;
+    });
+
+    if (minX === Infinity) { minX = 0; maxX = 0; minY = 0; maxY = 0; }
+
+    G.bounds = {
+      minX: minX,
+      maxX: maxX,
+      minY: minY + yOffset,
+      maxY: maxY + yOffset,
+      width: maxX - minX,
+      height: maxY - minY,
+      centerX: minX + (maxX - minX) / 2,
+      centerY: (minY + yOffset) + (maxY - minY) / 2
+    };
+
+    g.selectAll(`.link-${G.id}`).data(dag.edges()).enter().append("path")
+      .attr("class", "link").attr("d", e => {
+        const pts = dag.edge(e).points;
+        return d3.line().x(d => d.x).y(d => d.y + yOffset).curve(d3.curveBasis)(pts);
+      });
+
+    const nodeGroup = g.selectAll(`.node-${G.id}`).data(dag.nodes()).enter().append("g")
+      .attr("class", d => `node node-type-${dag.node(d).type}`)
+      .attr("transform", d => `translate(${dag.node(d).x}, ${dag.node(d).y + yOffset})`)
+      .on("click", (e, d) => { e.stopPropagation(); showDrawer(dag.node(d).fullData); });
+
+    nodeGroup.append("rect")
+      .attr("width", NODE_WIDTH).attr("height", NODE_HEIGHT).attr("x", -NODE_WIDTH / 2).attr("y", -NODE_HEIGHT / 2);
+
+    nodeGroup.append("text")
+      .attr("x", 0).attr("y", 0).attr("dy", "0.35em")
+      .text(d => dag.node(d).label).classed("label-title", true).style("text-anchor", "middle"); 
+
+    nodeGroup.append("text")
+      .attr("x", (NODE_WIDTH / 2) - 10).attr("y", (NODE_HEIGHT / 2) - 6)
+      .text(d => dag.node(d).type.replace(/_/g, " ")).classed("label-type", true).style("text-anchor", "end");
+  }
+
+  // --- Drawer & Learn Logic ---
+  
+  function openDrawerWithContent(titleText, htmlContent) {
+    const title = document.getElementById("drawer-title");
+    const content = document.getElementById("drawer-content");
+    
+    title.innerText = titleText;
+    content.innerHTML = htmlContent;
+    drawer.classList.add("open");
+  }
+
+  function showDrawer(node) {
+    const ignore = ["id", "parent_id", "children", "type", "name", "label", "width", "height", "x", "y"];
+    let html = `<div class="kv-row"><div class="kv-label">Name</div><div class="kv-value font-medium">${node.name}</div></div>`;
+
+    Object.entries(node).forEach(([key, val]) => {
+      if (ignore.includes(key) || val === null || val === "") return;
+      const isObj = typeof val === 'object';
+      const display = isObj ? JSON.stringify(val, null, 2) : val;
+      html += `<div class="kv-row"><div class="kv-label">${key.replace(/_/g, " ")}</div>${isObj ? `<div class="code-block">${display}</div>` : `<div class="kv-value">${display}</div>`}</div>`;
+    });
+
+    openDrawerWithContent((node.type || "Node").toUpperCase().replace(/_/g, " "), html);
+  }
+
+  function showLearn() {
+    const content = `
+      <div class="help-section">
+        <div class="help-title">
+          <span>🕹️</span> Navigation
+        </div>
+        <div class="help-text">
+          <ul class="help-list">
+            <li><strong>Pan:</strong> Click and drag anywhere on the background.</li>
+            <li><strong>Zoom:</strong> Use your mouse wheel or trackpad pinch.</li>
+            <li><strong>Details:</strong> Click any node to see arguments, SQL binds, and file paths.</li>
+            <li><strong>Center:</strong> Click <span class="kbd">Latest Trace</span> to snap the camera to the newest activity.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="help-section">
+        <div class="help-title">
+          <span>⚙️</span> Development Workflow
+        </div>
+        <div class="help-text">
+          <p class="mb-2">To see full traces including Background Jobs, ensure you are running:</p>
+          <div class="code-block">bundle exec sidekiq</div>
+          <p class="mt-2">Sidekiq runs in a separate process. If you change code in your app, <strong>Sidekiq does NOT reload automatically</strong>.</p>
+          <p class="mt-2 font-semibold text-indigo-700">💡 If you change code, restart the Sidekiq process and restart rails server using </p>
+          <div class="code-block">bundle exec sidekiq 
+rails s</div>
+          <p class="mt-2 font-semibold text-indigo-700"> Please refresh this viewer page after making changes to ensure the latest code is reflected.</p>
+        </div>
+      </div>
+
+      <div class="help-section">
+        <div class="help-title">
+          <span>🎨</span> Legend
+        </div>
+        <div class="help-text grid grid-cols-2 gap-2 mt-2">
+          <div class="flex items-center gap-2"><span class="w-3 h-3 bg-cyan-100 border border-cyan-300 rounded"></span> Route</div>
+          <div class="flex items-center gap-2"><span class="w-3 h-3 bg-blue-100 border border-blue-300 rounded"></span> Request</div>
+          <div class="flex items-center gap-2"><span class="w-3 h-3 bg-purple-100 border border-purple-300 rounded"></span> Job Enqueue</div>
+          <div class="flex items-center gap-2"><span class="w-3 h-3 bg-pink-100 border border-pink-300 rounded"></span> Job Perform</div>
+          <div class="flex items-center gap-2"><span class="w-3 h-3 bg-amber-100 border border-amber-300 rounded"></span> SQL Query</div>
+        </div>
+      </div>
+
+      <div class="mt-12 pt-6 border-t border-slate-200">
+        <div class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Created By</div>
+        <a href="https://www.linkedin.com/in/aditya-kolekar-5a54611b5/" target="_blank" class="flex items-center gap-4 p-4 bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md hover:border-blue-200 transition-all group text-decoration-none">
+          <div class="bg-[#0077b5] text-white p-2.5 rounded-full shrink-0">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/></svg>
+          </div>
+          <div>
+            <div class="font-bold text-slate-800 text-sm group-hover:text-[#0077b5] transition-colors">Aditya Kolekar</div>
+            <div class="text-xs text-slate-500 mt-0.5">Connect on LinkedIn</div>
+          </div>
+        </a>
+      </div>
+    `;
+    openDrawerWithContent("How to Use", content);
+  }
+
+  // --- UI Controls ---
+
+  document.getElementById("clear-btn").onclick = () => {
+    graphs = {};
+    redrawAllGraphs();
+    drawer.classList.remove("open");
+    console.log("🧹 Clearing traces & reconnecting...");
+    setupSubscription(); 
+  };
+
+  document.getElementById("center-btn").onclick = () => {
+    const ids = Object.keys(graphs);
+    if (ids.length === 0) return;
+    const G = graphs[ids[ids.length - 1]];
+    if (!G || !G.bounds || G.bounds.width === 0) return;
+
+    const padding = 80; 
+    const viewW = container.clientWidth;
+    const viewH = container.clientHeight;
+    const scaleX = (viewW - padding) / G.bounds.width;
+    const scaleY = (viewH - padding) / G.bounds.height;
+    let scale = Math.min(scaleX, scaleY);
+    scale = Math.min(scale, 1); 
+
+    const tX = (viewW / 2) - (G.bounds.centerX * scale);
+    const tY = (viewH / 2) - (G.bounds.centerY * scale);
+
+    svg.transition().duration(800).call(zoom.transform, d3.zoomIdentity.translate(tX, tY).scale(scale));
+  };
+
+  document.getElementById("learn-btn").onclick = showLearn;
+  document.getElementById("close-drawer").onclick = () => drawer.classList.remove("open");
+  document.querySelector("svg").onclick = () => drawer.classList.remove("open");
+
+  window.addEventListener("resize", () => {
+    svg.attr("width", container.clientWidth).attr("height", container.clientHeight);
+    redrawAllGraphs();
+  });
+});
+</script>
+</body>
+</html>

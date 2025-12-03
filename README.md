@@ -4,7 +4,7 @@ An educational and debugging tool for Ruby on Rails to visualize the request lif
 
 <div align="center">
   <a href="https://youtu.be/Zwg3rROyaH0">
-    <img src="https://img.youtube.com/vi/Zwg3rROyaH0/hqdefault.jpg" alt="Watch the Demo" style="width:100%; max-width:600px;">
+    <img src="https://img.youtube.com/vi/Zwg3rROyaH0/maxresdefault.jpg?v=1" alt="Watch the Demo" style="width:100%; max-width:800px; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.15);">
   </a>
 </div>
 

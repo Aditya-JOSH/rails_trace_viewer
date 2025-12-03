@@ -1,32 +1,59 @@
 module RailsTraceViewer
   module Subscribers
     class ViewSubscriber
-      EVENTS = ["render_template.action_view", "render_partial.action_view"]
-
       def self.attach
         return if @attached
         @attached = true
 
-        EVENTS.each do |event|
-          ActiveSupport::Notifications.subscribe(event) do |*_args, payload|
-            next unless RailsTraceViewer::TraceContext.active?
+        subscriber = new
+        ActiveSupport::Notifications.subscribe("render_template.action_view", subscriber)
+        ActiveSupport::Notifications.subscribe("render_partial.action_view", subscriber)
+      end
 
-            file = payload[:identifier]
-            next unless file && file.include?(Rails.root.join("app").to_s)
+      def start(name, id, payload)
+        file = payload[:identifier]
+        
+        return unless file && file.start_with?(Rails.root.to_s)
 
-            node = {
-              id: SecureRandom.uuid,
-              parent_id: RailsTraceViewer::TraceContext.parent_id,
-              type: "view",
-              name: file.split("/app/").last,
-              source: file.sub(Rails.root.to_s, ''),
-              layout: payload[:layout],
-              full_path: file,
-              children: []
-            }
+        if !RailsTraceViewer::TraceContext.active?
+          trace_id = SecureRandom.uuid
+          RailsTraceViewer::TraceContext.start!(trace_id)
+          RailsTraceViewer::Collector.start_trace(trace_id)
+          Thread.current["rtv_view_root_#{id}"] = true
+        end
 
-            RailsTraceViewer::Collector.add_node(RailsTraceViewer::TraceContext.trace_id, node)
-          end
+        trace_id = RailsTraceViewer::TraceContext.trace_id
+        parent_id = RailsTraceViewer::TraceContext.parent_id
+        node_id = SecureRandom.uuid
+
+        Thread.current["rtv_view_node_#{id}"] = node_id
+
+        relative_path = file.sub(Rails.root.to_s, '')
+
+        node = {
+          id: node_id,
+          parent_id: parent_id,
+          type: "view",
+          name: relative_path.split("/").last,
+          source: relative_path,
+          layout: payload[:layout],
+          full_path: file,
+          children: []
+        }
+
+        RailsTraceViewer::Collector.add_node(trace_id, node)
+        RailsTraceViewer::TraceContext.push(node_id)
+      end
+
+      def finish(name, id, payload)
+        if Thread.current["rtv_view_node_#{id}"]
+          RailsTraceViewer::TraceContext.pop
+          Thread.current["rtv_view_node_#{id}"] = nil
+        end
+
+        if Thread.current["rtv_view_root_#{id}"]
+          RailsTraceViewer::TraceContext.stop!
+          Thread.current["rtv_view_root_#{id}"] = nil
         end
       end
     end

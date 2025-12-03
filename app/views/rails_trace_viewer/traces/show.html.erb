@@ -19,8 +19,26 @@
       overflow: hidden; 
       cursor: grab; 
       background: #f8fafc;
+      position: relative;
     }
     .trace-container:active { cursor: grabbing; }
+
+    /* Empty State Styling */
+    .empty-state {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      transition: opacity 0.5s ease-out, visibility 0.5s;
+      opacity: 1;
+      visibility: visible;
+      pointer-events: none;
+    }
+    .empty-state.hidden {
+      opacity: 0;
+      visibility: hidden;
+    }
 
     /* Nodes */
     .node rect { rx: 6; ry: 6; stroke-width: 1px; transition: all 0.2s; filter: drop-shadow(0 2px 4px rgb(0 0 0 / 0.05)); }
@@ -95,7 +113,7 @@
     <button id="clear-btn" class="px-3 py-2 text-sm font-medium text-red-600 bg-white border border-slate-300 rounded-md hover:bg-red-50 flex items-center gap-2 transition-all active:scale-95">
       <span>🗑</span> Clear
     </button>
-    <button id="learn-btn" class="px-3 py-2 text-sm font-medium text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-md hover:bg-indigo-100 flex items-center gap-2 transition-all active:scale-95">
+    <button id="learn-btn" class="px-3 py-2 text-sm font-medium text-indigo-600 bg-white border border-indigo-200 rounded-md hover:bg-indigo-100 flex items-center gap-2 transition-all active:scale-95">
       <span>📖</span> Learn
     </button>
   </div>
@@ -103,6 +121,13 @@
 
 <div class="flex h-full">
   <div id="trace-visualization" class="trace-container"></div>
+    <div id="empty-state" class="empty-state">
+      <div class="mb-4 inline-block p-4 bg-white rounded-full shadow-sm">
+        <svg class="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+      </div>
+      <h3 class="text-lg font-medium text-slate-700">Waiting for Activity...</h3>
+      <p class="text-sm text-slate-400 mt-2">Trigger a web request, a job, a background worker, or a method to see the trace.</p>
+    </div>
   <div id="detail-drawer" class="drawer">
     <div class="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
       <h2 class="font-bold text-slate-800 text-lg" id="drawer-title">Details</h2>
@@ -116,6 +141,7 @@
 document.addEventListener("DOMContentLoaded", () => {
   const container = document.getElementById("trace-visualization");
   const drawer = document.getElementById("detail-drawer");
+  const emptyState = document.getElementById("empty-state");
   let graphs = {}; 
   let nodeBuffer = {};
   let verticalOffset = 60;
@@ -150,6 +176,9 @@ document.addEventListener("DOMContentLoaded", () => {
       received(data) {
         if (!data || !data.node) return;
         if ((data.node.name || "").includes("RailsTraceViewer")) return;
+        
+        emptyState.classList.add("hidden");
+
         addNodeToGraph(data.trace_id, data.node);
         
         if (this.redrawTimer) clearTimeout(this.redrawTimer);
@@ -215,7 +244,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function renderSingleDAG(G, yOffset) {
     const dag = new dagre.graphlib.Graph();
-    dag.setGraph({ rankdir: "LR", nodesep: 25, ranksep: 60 });
+
+    const parentCounts = {};
+    G.edges.forEach(e => {
+      parentCounts[e.source] = (parentCounts[e.source] || 0) + 1;
+    });
+    
+    const maxChildren = Math.max(...Object.values(parentCounts), 0);
+
+    const dynamicRankSep = Math.min(800, Math.max(60, 40 + (maxChildren * 18)));
+
+    dag.setGraph({ rankdir: "LR", nodesep: 25, ranksep: dynamicRankSep });
     dag.setDefaultEdgeLabel(() => ({}));
 
     Object.values(G.nodes).forEach(n => {
@@ -229,16 +268,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (dag.graph().height) G.height = dag.graph().height;
     
-    let minX = Infinity, maxX = -Infinity;
-    let minY = Infinity, maxY = -Infinity;
-
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     Object.values(G.nodes).forEach(n => {
       const nodeInfo = dag.node(n.id);
       const nx1 = nodeInfo.x - (nodeInfo.width / 2);
       const nx2 = nodeInfo.x + (nodeInfo.width / 2);
       const ny1 = nodeInfo.y - (nodeInfo.height / 2);
       const ny2 = nodeInfo.y + (nodeInfo.height / 2);
-
       if (nx1 < minX) minX = nx1;
       if (nx2 > maxX) maxX = nx2;
       if (ny1 < minY) minY = ny1;
@@ -248,36 +284,28 @@ document.addEventListener("DOMContentLoaded", () => {
     if (minX === Infinity) { minX = 0; maxX = 0; minY = 0; maxY = 0; }
 
     G.bounds = {
-      minX: minX,
-      maxX: maxX,
-      minY: minY + yOffset,
-      maxY: maxY + yOffset,
-      width: maxX - minX,
-      height: maxY - minY,
-      centerX: minX + (maxX - minX) / 2,
-      centerY: (minY + yOffset) + (maxY - minY) / 2
+      minX: minX, maxX: maxX, minY: minY + yOffset, maxY: maxY + yOffset,
+      width: maxX - minX, height: maxY - minY,
+      centerX: minX + (maxX - minX) / 2, centerY: (minY + yOffset) + (maxY - minY) / 2
     };
 
     g.selectAll(`.link-${G.id}`).data(dag.edges()).enter().append("path")
-      .attr("class", "link").attr("d", e => {
+      .attr("class", "link")
+      .attr("d", e => {
         const pts = dag.edge(e).points;
-        return d3.line().x(d => d.x).y(d => d.y + yOffset).curve(d3.curveBasis)(pts);
+        return d3.line().x(d => d.x).y(d => d.y + yOffset).curve(d3.curveMonotoneX)(pts);
       });
 
     const nodeGroup = g.selectAll(`.node-${G.id}`).data(dag.nodes()).enter().append("g")
       .attr("class", d => `node node-type-${dag.node(d).type}`)
+      .attr("id", d => `node-${d}`) 
       .attr("transform", d => `translate(${dag.node(d).x}, ${dag.node(d).y + yOffset})`)
       .on("click", (e, d) => { e.stopPropagation(); showDrawer(dag.node(d).fullData); });
 
-    nodeGroup.append("rect")
-      .attr("width", NODE_WIDTH).attr("height", NODE_HEIGHT).attr("x", -NODE_WIDTH / 2).attr("y", -NODE_HEIGHT / 2);
-
-    nodeGroup.append("text")
-      .attr("x", 0).attr("y", 0).attr("dy", "0.35em")
+    nodeGroup.append("rect").attr("width", NODE_WIDTH).attr("height", NODE_HEIGHT).attr("x", -NODE_WIDTH / 2).attr("y", -NODE_HEIGHT / 2);
+    nodeGroup.append("text").attr("x", 0).attr("y", 0).attr("dy", "0.35em")
       .text(d => dag.node(d).label).classed("label-title", true).style("text-anchor", "middle"); 
-
-    nodeGroup.append("text")
-      .attr("x", (NODE_WIDTH / 2) - 10).attr("y", (NODE_HEIGHT / 2) - 6)
+    nodeGroup.append("text").attr("x", (NODE_WIDTH / 2) - 10).attr("y", (NODE_HEIGHT / 2) - 6)
       .text(d => dag.node(d).type.replace(/_/g, " ")).classed("label-type", true).style("text-anchor", "end");
   }
 
@@ -347,8 +375,11 @@ rails s</div>
           <div class="flex items-center gap-2"><span class="w-3 h-3 bg-purple-100 border border-purple-300 rounded"></span> Job Enqueue</div>
           <div class="flex items-center gap-2"><span class="w-3 h-3 bg-pink-100 border border-pink-300 rounded"></span> Job Perform</div>
           <div class="flex items-center gap-2"><span class="w-3 h-3 bg-amber-100 border border-amber-300 rounded"></span> SQL Query</div>
+          <div class="flex items-center gap-2"><span class="w-3 h-3 bg-emerald-100 border border-emerald-300 rounded"></span> View Render</div>
         </div>
       </div>
+
+      <div class="help-section"><div class="help-title"><span>📚</span> Resources</div><div class="help-text"><p class="mb-2">To learn more, read the <a href="https://github.com/Aditya-JOSH/rails_trace_viewer/blob/main/README.md" target="_blank" class="text-indigo-600 hover:underline font-medium">Project Documentation</a>.</p><p>Found an issue? Report it on <a href="https://github.com/Aditya-JOSH/rails_trace_viewer/issues" target="_blank" class="text-indigo-600 hover:underline font-medium">GitHub Issues</a>.</p></div></div>
 
       <div class="mt-12 pt-6 border-t border-slate-200">
         <div class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Created By</div>
@@ -373,6 +404,7 @@ rails s</div>
     redrawAllGraphs();
     drawer.classList.remove("open");
     console.log("🧹 Clearing traces & reconnecting...");
+    emptyState.classList.remove("hidden");
     setupSubscription(); 
   };
 
@@ -393,7 +425,8 @@ rails s</div>
     const tX = (viewW / 2) - (G.bounds.centerX * scale);
     const tY = (viewH / 2) - (G.bounds.centerY * scale);
 
-    svg.transition().duration(800).call(zoom.transform, d3.zoomIdentity.translate(tX, tY).scale(scale));
+    svg.transition().duration(2500).ease(d3.easeCubicOut)
+       .call(zoom.transform, d3.zoomIdentity.translate(tX, tY).scale(scale));
   };
 
   document.getElementById("learn-btn").onclick = showLearn;

@@ -2,6 +2,8 @@
 
 An educational and debugging tool for Ruby on Rails to visualize the request lifecycle in real-time.
 
+[![Watch the Demo](https://img.youtube.com/vi/Zwg3rROyaH0/maxresdefault.jpg)](https://youtu.be/Zwg3rROyaH0)
+
 Rails Trace Viewer provides a beautiful, interactive Call Stack Tree that visualizes how your Rails application processes requests. It traces the flow from the Controller through Models, Views, SQL Queries, and even across process boundaries into Sidekiq Background Jobs.
 
 ---
@@ -95,6 +97,7 @@ Rails.application.routes.draw do
 end
 ```
 
+**🛑 Need to disable the gem?** Simply comment out the `mount RailsTraceViewer::Engine => '/rails_trace_viewer'` line above. The gem detects this and **shuts down completely** (Zero Overhead).
 ---
 
 ### 3. Configure Action Cable (Redis)

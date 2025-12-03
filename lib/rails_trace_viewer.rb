@@ -18,5 +18,14 @@ require "rails_trace_viewer/subscribers/sidekiq_subscriber"
 require "rails_trace_viewer/subscribers/method_subscriber"
 
 module RailsTraceViewer
-  # Public API can be added here later
+  mattr_accessor :enabled
+  self.enabled = true
+
+  def self.enabled?
+    !!self.enabled
+  end
+
+  def self.configure
+    yield self
+  end
 end

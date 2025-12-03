@@ -12,6 +12,12 @@ module RailsTraceViewer
           is_app_path = path.start_with?(Rails.root.to_s) && 
                         !path.include?("/vendor/") && 
                         !path.include?("rails_trace_viewer")
+
+          is_view_related = path.include?("/app/views/")
+          
+          # Only trace Controllers, Models, Jobs, Services. Skip Views.
+          next unless is_app_path && !is_view_related
+
           is_active_job = (tp.defined_class < ApplicationJob) rescue false
           is_sidekiq_worker = (tp.defined_class.include?(Sidekiq::Worker)) rescue false
 

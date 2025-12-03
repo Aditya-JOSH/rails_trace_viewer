@@ -2,7 +2,11 @@
 
 An educational and debugging tool for Ruby on Rails to visualize the request lifecycle in real-time.
 
-[![Watch the Demo](https://img.youtube.com/vi/Zwg3rROyaH0/hqdefault.jpg)](https://youtu.be/Zwg3rROyaH0)
+<div align="center">
+  <a href="https://youtu.be/Zwg3rROyaH0">
+    <img src="https://img.youtube.com/vi/Zwg3rROyaH0/hqdefault.jpg" alt="Watch the Demo" style="width:100%; max-width:600px;">
+  </a>
+</div>
 
 Rails Trace Viewer provides a beautiful, interactive Call Stack Tree that visualizes how your Rails application processes requests. It traces the flow from the Controller through Models, Views, SQL Queries, and even across process boundaries into Sidekiq Background Jobs.
 

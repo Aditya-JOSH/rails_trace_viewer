@@ -259,7 +259,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     Object.values(G.nodes).forEach(n => {
       let lbl = n.name || "Unknown";
-      if (lbl.length > 38) lbl = lbl.substring(0, 35) + "...";
+      if (lbl.length > 29) lbl = lbl.substring(0, 27) + "...";
       dag.setNode(n.id, { label: lbl, width: NODE_WIDTH, height: NODE_HEIGHT, type: n.type, fullData: n });
     });
 

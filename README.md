@@ -3,8 +3,8 @@
 An educational and debugging tool for Ruby on Rails to visualize the request lifecycle in real-time.
 
 <div align="center">
-  <a href="https://youtu.be/duSncwziSwE">
-    <img src="https://markdown-videos-api.jorgenkh.no/url?url=https%3A%2F%2Fyoutu.be%2FduSncwziSwE" alt="Watch the Demo" style="width:100%; max-width:800px; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.15);">
+  <a href="https://youtu.be/NfhT-iVbRTs">
+    <img src="https://markdown-videos-api.jorgenkh.no/url?url=https%3A%2F%2Fyoutu.be%2FNfhT-iVbRTs" alt="Watch the Demo" style="width:100%; max-width:800px; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.15);">
   </a>
 </div>
 

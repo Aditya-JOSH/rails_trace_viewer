@@ -4,10 +4,10 @@ require "active_support"
 require "active_support/notifications"
 
 require "rails_trace_viewer/engine"
+require "rails_trace_viewer/active_job_extension"
 require "rails_trace_viewer/collector"
 require "rails_trace_viewer/trace_context"
 require "rails_trace_viewer/broadcaster"
-require "rails_trace_viewer/job_link_registry"
 require "rails_trace_viewer/route_resolver"
 
 require "rails_trace_viewer/subscribers/controller_subscriber"

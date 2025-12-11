@@ -129,23 +129,6 @@ module RailsTraceViewer
 
         after.each(&:call)
       end
-
-      def finalize_trace(trace_id)
-        trace = nil
-
-        @mutex.synchronize do
-          tree = TRACE_TREES[trace_id]
-          return unless tree
-          trace = tree[:root]
-          TRACE_TREES.delete(trace_id)
-        end
-
-        ActionCable.server.broadcast(
-          "rails_trace_viewer",
-          event: "trace_completed",
-          trace: trace
-        )
-      end
     end
   end
 end

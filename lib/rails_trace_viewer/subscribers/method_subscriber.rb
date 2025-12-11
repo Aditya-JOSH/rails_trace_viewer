@@ -40,6 +40,27 @@ module RailsTraceViewer
             is_singleton = tp.defined_class.singleton_class? rescue false
             method_sig = "#{class_name}#{is_singleton ? '.' : '#'}#{tp.method_id}"
 
+            arguments = {}
+            if tp.binding
+              tp.parameters.each do |type, name|
+                begin
+                  val = tp.binding.local_variable_get(name)
+                  if val.is_a?(String)
+                    arguments[name] = val.length > 1000 ? val[0..1000] + "... (truncated)" : val
+                  elsif val.is_a?(Numeric) || val == true || val == false || val.nil?
+                    arguments[name] = val
+                  elsif defined?(ActiveRecord::Base) && val.is_a?(ActiveRecord::Base)
+                    arguments[name] = val.attributes
+                  else
+                    inspected = val.inspect
+                    arguments[name] = inspected.length > 1000 ? inspected[0..1000] + "... (truncated)" : inspected
+                  end
+                rescue => e
+                  arguments[name] = "Error"
+                end
+              end
+            end
+            
             node = {
               id: node_id,
               parent_id: parent_id,
@@ -50,6 +71,7 @@ module RailsTraceViewer
               line_number: tp.lineno,
               class_name: class_name,
               method_name: tp.method_id,
+              arguments: arguments,
               children: []
             }
             RailsTraceViewer::Collector.add_node(trace_id, node)

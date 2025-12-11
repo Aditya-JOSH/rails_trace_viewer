@@ -24,18 +24,13 @@ module RailsTraceViewer
 
       class ClientMiddleware
         def call(worker_class, job, queue, redis_pool)
-          trace_id = nil
-          parent_id = nil
-          started_new_trace = false
 
           if RailsTraceViewer::TraceContext.active?
             trace_id  = RailsTraceViewer::TraceContext.trace_id
             parent_id = RailsTraceViewer::TraceContext.parent_id
           else
             trace_id = SecureRandom.uuid
-            RailsTraceViewer::TraceContext.start!(trace_id)
-            RailsTraceViewer::Collector.start_trace(trace_id)
-            started_new_trace = true
+            parent_id = nil
           end
 
           enqueue_node_id = SecureRandom.uuid
@@ -60,17 +55,13 @@ module RailsTraceViewer
           RailsTraceViewer::Collector.add_node(trace_id, node)
           
           yield
-        ensure
-          if started_new_trace
-            RailsTraceViewer::TraceContext.stop!
-          end
         end
       end
 
       class ServerMiddleware
         def call(worker, job, queue)
           trace_id = job["_trace_id"]
-          parent_id = job["_enqueue_node_id"] || job["_parent_id"]
+          parent_id = job["_enqueue_node_id"]
           perform_node_id = nil
 
           if trace_id

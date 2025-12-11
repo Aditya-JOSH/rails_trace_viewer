@@ -2,6 +2,9 @@
 <html>
 <head>
   <title>Rails Trace Viewer</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
@@ -144,7 +147,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const emptyState = document.getElementById("empty-state");
   let graphs = {}; 
   let nodeBuffer = {};
-  let verticalOffset = 60;
   const DAG_SPACING = 200;
   
   // Node Dimensions
@@ -167,24 +169,34 @@ document.addEventListener("DOMContentLoaded", () => {
   let subscription = null;
 
   function setupSubscription() {
-    if (cable) cable.disconnect();
-    cable = ActionCable.createConsumer();
-    
-    subscription = cable.subscriptions.create({ channel: "RailsTraceViewer::TraceChannel" }, {
-      connected() { console.log("✅ TraceViewer: Connected"); },
-      disconnected() { console.log("❌ TraceViewer: Disconnected"); },
-      received(data) {
-        if (!data || !data.node) return;
-        if ((data.node.name || "").includes("RailsTraceViewer")) return;
-        
-        emptyState.classList.add("hidden");
+    try {
+      if (cable) cable.disconnect();
+    } catch (err) {
+      console.warn("Error disconnecting previous cable:", err);
+    }
 
-        addNodeToGraph(data.trace_id, data.node);
-        
-        if (this.redrawTimer) clearTimeout(this.redrawTimer);
-        this.redrawTimer = setTimeout(redrawAllGraphs, 100);
-      }
-    });
+    try {
+      cable = ActionCable.createConsumer();
+      subscription = cable.subscriptions.create({ channel: "RailsTraceViewer::TraceChannel" }, {
+        connected() { console.log("✅ TraceViewer: Connected"); },
+        disconnected() { console.log("❌ TraceViewer: Disconnected"); },
+        received(data) {
+          try {
+            if (!data || !data.node) return;
+            if ((data.node.name || "").includes("RailsTraceViewer")) return;
+            
+            emptyState.classList.add("hidden");
+            addNodeToGraph(data.trace_id, data.node);
+            if (this.redrawTimer) clearTimeout(this.redrawTimer);
+            this.redrawTimer = setTimeout(redrawAllGraphs, 100);
+          } catch (err) {
+            console.error("Error processing trace message:", err);
+          }
+        }
+      });
+    } catch (err) {
+      console.error("Failed to create ActionCable consumer. Is ActionCable mounted at /cable?", err);
+    }
   }
 
   setupSubscription();
@@ -195,6 +207,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let changed = false;
     Object.keys(nodeBuffer).forEach(pid => {
       const list = nodeBuffer[pid];
+      if (!list) return;
       const kept = [];
       list.forEach(item => {
         if (now - item.receivedAt > 3000) {
@@ -234,7 +247,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // --- Rendering ---
   function redrawAllGraphs() {
     g.selectAll("*").remove();
-    verticalOffset = 60;
+    let verticalOffset = 60;
     
     Object.keys(graphs).forEach(tid => {
       renderSingleDAG(graphs[tid], verticalOffset);

@@ -1,7 +1,9 @@
 module RailsTraceViewer
   class RouteResolver
     def self.resolve(path, method)
-      recognized = Rails.application.routes.recognize_path(path, method: method.downcase.to_sym)
+      http_verb = method.to_s.downcase.to_sym
+
+      recognized = Rails.application.routes.recognize_path(path, method: http_verb)
 
       route = Rails.application.routes.routes.find do |r|
         r.defaults[:controller] == recognized[:controller] &&
@@ -13,8 +15,12 @@ module RailsTraceViewer
         verb: method,
         path: path
       }
-    rescue
-      nil
+    rescue StandardError
+      {
+        name: "(unrecognized)",
+        verb: method,
+        path: path
+      }
     end
   end
 end
